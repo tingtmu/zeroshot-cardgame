@@ -1,0 +1,26 @@
+{
+  "cards": [
+    {
+      "name": "Strike",
+      "cost": 1,
+      "effects": [
+        {"type": "damage", "amount": 6}
+      ]
+    },
+    {
+      "name": "Guard",
+      "cost": 1,
+      "effects": [
+        {"type": "shield", "amount": 5}
+      ]
+    },
+    {
+      "name": "Venom Dart",
+      "cost": 1,
+      "effects": [
+        {"type": "damage", "amount": 3},
+        {"type": "apply_status", "status": "poison", "stacks": 2, "duration": 3}
+      ]
+    }
+  ]
+}
