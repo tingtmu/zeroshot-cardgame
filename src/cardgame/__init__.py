@@ -1,5 +1,6 @@
-"""Turn-based card roguelike skill engine (data structures and loader)."""
+"""Turn-based card roguelike skill engine (data structures, loader and turn flow)."""
 
+from cardgame.battle import Battle, BattleError
 from cardgame.loader import (
     DEFAULT_CARDS_PATH,
     CardDataError,
@@ -10,6 +11,8 @@ from cardgame.loader import (
 from cardgame.models import Card, Effect, EffectKind, Status, StatusKind, Unit
 
 __all__ = [
+    "Battle",
+    "BattleError",
     "Card",
     "CardDataError",
     "DEFAULT_CARDS_PATH",
