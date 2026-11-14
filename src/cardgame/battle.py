@@ -25,8 +25,11 @@ A status applied during a turn therefore first resolves at the end of that same
 turn. A shield granted with duration 1 absorbs the enemy's attack in the same
 turn and then expires.
 
-Enemy AI (milestone 4) is not implemented: the enemy performs a fixed
-placeholder attack.
+Enemy action: when an ``EnemyAI`` is supplied, the enemy performs its current
+intent (the same effect resolution cards use, with the enemy as the acting
+unit) and then chooses its next intent, which is exposed as ``enemy_intent``
+so the player can see it. Without an ``EnemyAI`` the enemy performs a fixed
+placeholder attack of ``enemy_attack`` damage.
 """
 
 from __future__ import annotations
@@ -34,7 +37,17 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 
-from cardgame.models import Card, Effect, EffectKind, Status, StatusKind, Unit, _require_int
+from cardgame.enemies import EnemyAI, Intent
+from cardgame.models import (
+    Card,
+    Effect,
+    EffectKind,
+    Status,
+    StatusKind,
+    Target,
+    Unit,
+    _require_int,
+)
 from cardgame.statuses import StatusRules, load_default_status_rules
 
 DEFAULT_CARDS_PER_TURN = 5
@@ -54,7 +67,8 @@ class Battle:
 
     The player's deck is copied into a draw pile and shuffled with the seeded
     RNG. The hand and discard pile are tracked alongside it. Only the player
-    plays cards; the enemy's turn is a placeholder for now.
+    plays cards. The enemy acts from ``enemy_ai`` when given, otherwise from
+    the placeholder attack.
     """
 
     def __init__(
@@ -66,11 +80,14 @@ class Battle:
         cards_per_turn: int = DEFAULT_CARDS_PER_TURN,
         enemy_attack: int = DEFAULT_ENEMY_ATTACK,
         status_rules: Mapping[StatusKind, StatusRules] | None = None,
+        enemy_ai: EnemyAI | None = None,
     ) -> None:
         if isinstance(seed, bool) or not isinstance(seed, int):
             raise TypeError(f"seed must be an int, got {type(seed).__name__}")
         _require_int("cards_per_turn", cards_per_turn, 0)
         _require_int("enemy_attack", enemy_attack, 0)
+        if enemy_ai is not None and not isinstance(enemy_ai, EnemyAI):
+            raise TypeError(f"enemy_ai must be an EnemyAI, got {type(enemy_ai).__name__}")
         if status_rules is None:
             status_rules = load_default_status_rules()
         missing = [kind.value for kind in StatusKind if kind not in status_rules]
@@ -89,6 +106,13 @@ class Battle:
         self.rng.shuffle(self.draw_pile)
         self.hand: list[Card] = []
         self.discard_pile: list[Card] = []
+
+        self._enemy_ai = enemy_ai
+        # The enemy's next intent, chosen up front so it can be shown during
+        # the player's turn. None when the enemy has no AI.
+        self._enemy_intent: Intent | None = (
+            enemy_ai.choose(self.rng) if enemy_ai is not None else None
+        )
 
         # Number of turns started so far. 0 means no turn has begun yet.
         self.turn = 0
@@ -110,6 +134,14 @@ class Battle:
     @property
     def in_player_phase(self) -> bool:
         return self._player_phase
+
+    @property
+    def enemy_intent(self) -> Intent | None:
+        """The intent the enemy will carry out at the end of the player's turn.
+
+        None if the enemy has no ``EnemyAI``.
+        """
+        return self._enemy_intent
 
     # ------------------------------------------------------------ turn flow
 
@@ -140,7 +172,7 @@ class Battle:
         del self.hand[hand_index]
         self.discard_pile.append(card)
         for effect in card.effects:
-            self._resolve_effect(effect)
+            self._resolve_effect(effect, self.player, self.enemy)
         return card
 
     def end_turn(self) -> None:
@@ -183,25 +215,37 @@ class Battle:
                 self.rng.shuffle(self.draw_pile)
             self.hand.append(self.draw_pile.pop())
 
-    def _resolve_effect(self, effect: Effect) -> None:
+    def _resolve_effect(self, effect: Effect, actor: Unit, opponent: Unit) -> None:
+        """Resolve ``effect`` performed by ``actor`` against ``opponent``.
+
+        The effect's target (``SELF`` or ``OPPONENT``, by default per kind)
+        picks which unit it lands on. Draw always draws for the player's hand.
+        """
+        target = actor if effect.effective_target is Target.SELF else opponent
         match effect.kind:
             case EffectKind.DAMAGE:
-                self._deal_damage(self.enemy, self._outgoing_damage(self.player, effect.amount))
+                self._deal_damage(target, self._outgoing_damage(actor, effect.amount))
             case EffectKind.SHIELD:
-                self.player.apply_status(
-                    StatusKind.SHIELD, stacks=effect.amount, duration=_SHIELD_DURATION
-                )
+                target.apply_status(StatusKind.SHIELD, stacks=effect.amount, duration=_SHIELD_DURATION)
             case EffectKind.DRAW:
                 self._draw(effect.amount)
             case EffectKind.APPLY_STATUS:
                 assert effect.status is not None  # guaranteed by Effect validation
-                self.enemy.apply_status(effect.status, effect.stacks, effect.duration)
+                target.apply_status(effect.status, effect.stacks, effect.duration)
             case _:  # pragma: no cover - every EffectKind is handled above
                 raise AssertionError(f"unhandled effect kind {effect.kind!r}")
 
     def _enemy_act(self) -> None:
-        """Placeholder enemy turn: a fixed attack on the player. AI comes in milestone 4."""
-        self._deal_damage(self.player, self._outgoing_damage(self.enemy, self.enemy_attack))
+        """Carry out the enemy's intent, then choose the next one.
+
+        Without an AI, falls back to the fixed placeholder attack.
+        """
+        if self._enemy_ai is None or self._enemy_intent is None:
+            self._deal_damage(self.player, self._outgoing_damage(self.enemy, self.enemy_attack))
+            return
+        for effect in self._enemy_intent.effects:
+            self._resolve_effect(effect, self.enemy, self.player)
+        self._enemy_intent = self._enemy_ai.choose(self.rng)
 
     def _deal_damage(self, target: Unit, amount: int) -> None:
         """Deal ``amount`` damage to ``target``, absorbing it with absorbing statuses first.
