@@ -1,0 +1,56 @@
+{
+  "enemies": [
+    {
+      "name": "Slime",
+      "max_hp": 30,
+      "pattern": {
+        "mode": "cycle",
+        "intents": [
+          {
+            "name": "Tackle",
+            "effects": [
+              {"type": "damage", "amount": 4}
+            ]
+          },
+          {
+            "name": "Harden",
+            "effects": [
+              {"type": "apply_status", "status": "shield", "stacks": 5, "duration": 2, "target": "self"}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Cultist",
+      "max_hp": 40,
+      "pattern": {
+        "mode": "weighted",
+        "intents": [
+          {
+            "name": "Dark Strike",
+            "weight": 2,
+            "effects": [
+              {"type": "damage", "amount": 6}
+            ]
+          },
+          {
+            "name": "Venom Spit",
+            "weight": 1,
+            "effects": [
+              {"type": "damage", "amount": 2},
+              {"type": "apply_status", "status": "poison", "stacks": 1, "duration": 2}
+            ]
+          },
+          {
+            "name": "Ward",
+            "weight": 1,
+            "effects": [
+              {"type": "apply_status", "status": "shield", "stacks": 4, "duration": 2, "target": "self"}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

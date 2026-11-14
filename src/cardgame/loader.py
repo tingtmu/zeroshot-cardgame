@@ -28,13 +28,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from cardgame.models import Card, Effect, EffectKind, StatusKind
+from cardgame.models import Card, Effect, EffectKind, StatusKind, Target
 
 DEFAULT_CARDS_PATH = Path(__file__).parent / "data" / "cards.json"
 
 _CARD_KEYS = {"name", "cost", "effects"}
-_AMOUNT_EFFECT_KEYS = {"type", "amount"}
-_STATUS_EFFECT_KEYS = {"type", "status", "stacks", "duration"}
+_AMOUNT_EFFECT_KEYS = {"type", "amount", "target"}
+_STATUS_EFFECT_KEYS = {"type", "status", "stacks", "duration", "target"}
 
 
 class CardDataError(ValueError):
@@ -56,7 +56,20 @@ def _int_field(obj: Mapping[str, Any], key: str, where: str) -> int:
     return value
 
 
-def _parse_effect(raw: Any, where: str) -> Effect:
+def _target_field(raw: Mapping[str, Any], where: str) -> Target | None:
+    if "target" not in raw:
+        return None
+    try:
+        return Target(raw["target"])
+    except ValueError:
+        raise CardDataError(f"{where}: unknown target {raw['target']!r}") from None
+
+
+def parse_effect(raw: Any, where: str) -> Effect:
+    """Parse one effect object (``{"type": ...}``) from decoded JSON.
+
+    Shared by card and enemy-intent data, so both use the same Effect system.
+    """
     if not isinstance(raw, Mapping):
         raise CardDataError(f"{where}: effect must be an object")
     if "type" not in raw:
@@ -82,9 +95,14 @@ def _parse_effect(raw: Any, where: str) -> Effect:
                 status=status,
                 stacks=_int_field(raw, "stacks", where),
                 duration=_int_field(raw, "duration", where),
+                target=_target_field(raw, where),
             )
         _check_keys(raw, _AMOUNT_EFFECT_KEYS, where)
-        return Effect(kind=kind, amount=_int_field(raw, "amount", where))
+        return Effect(
+            kind=kind,
+            amount=_int_field(raw, "amount", where),
+            target=_target_field(raw, where),
+        )
     except (TypeError, ValueError) as exc:
         if isinstance(exc, CardDataError):
             raise
@@ -105,7 +123,7 @@ def _parse_card(raw: Any, index: int) -> Card:
     if not isinstance(effects_raw, list):
         raise CardDataError(f"{where}: 'effects' must be a list")
     effects = tuple(
-        _parse_effect(effect, f"{where} effects[{i}]")
+        parse_effect(effect, f"{where} effects[{i}]")
         for i, effect in enumerate(effects_raw)
     )
     try:

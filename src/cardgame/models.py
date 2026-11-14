@@ -35,12 +35,27 @@ class StatusKind(str, Enum):
     SHIELD = "shield"
 
 
+class Target(str, Enum):
+    """Who an effect applies to, relative to the unit performing it.
+
+    ``SELF`` is the performing unit (the card's player, or the acting enemy);
+    ``OPPONENT`` is the other side of the battle. Values match the JSON
+    ``target`` field.
+    """
+
+    SELF = "self"
+    OPPONENT = "opponent"
+
+
 @dataclass(frozen=True)
 class Effect:
-    """A single effect of a card.
+    """A single effect of a card or an enemy intent.
 
     ``amount`` is used by ``damage``, ``shield`` and ``draw``.
     ``status``, ``stacks`` and ``duration`` are used by ``apply_status`` only.
+
+    ``target`` is optional. When omitted, ``shield`` affects the performing
+    unit and every other effect affects the opponent. ``draw`` takes no target.
     """
 
     kind: EffectKind
@@ -48,10 +63,15 @@ class Effect:
     status: StatusKind | None = None
     stacks: int = 0
     duration: int = 0
+    target: Target | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, EffectKind):
             raise TypeError(f"kind must be an EffectKind, got {self.kind!r}")
+        if self.target is not None and not isinstance(self.target, Target):
+            raise TypeError(f"target must be a Target, got {self.target!r}")
+        if self.kind is EffectKind.DRAW and self.target is not None:
+            raise ValueError("draw effect must not set 'target'")
         if self.kind is EffectKind.APPLY_STATUS:
             if not isinstance(self.status, StatusKind):
                 raise ValueError("apply_status effect requires a StatusKind 'status'")
@@ -65,6 +85,15 @@ class Effect:
                 raise ValueError(
                     f"{self.kind.value} effect must not set status, stacks or duration"
                 )
+
+    @property
+    def effective_target(self) -> Target:
+        """The explicit ``target``, or the default for this effect kind."""
+        if self.target is not None:
+            return self.target
+        if self.kind in (EffectKind.SHIELD, EffectKind.DRAW):
+            return Target.SELF
+        return Target.OPPONENT
 
 
 @dataclass(frozen=True)
