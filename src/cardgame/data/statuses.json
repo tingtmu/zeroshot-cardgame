@@ -1,0 +1,17 @@
+{
+  "statuses": [
+    {
+      "kind": "poison",
+      "turn_end_damage_per_stack": true,
+      "stacks_lost_per_turn": 1
+    },
+    {
+      "kind": "weak",
+      "outgoing_damage_reduction_per_stack": 25
+    },
+    {
+      "kind": "shield",
+      "absorbs_damage": true
+    }
+  ]
+}
